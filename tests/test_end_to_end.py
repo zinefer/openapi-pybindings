@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import textwrap
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta, timezone
@@ -652,6 +653,130 @@ def test_mypy_rejects_ignoring_a_nullable_response(generated: Project) -> None:
         "from api.client import movies as movies_client\n\n\n"
         "async def use(t: Transport) -> str:\n"
         "    return await movies_client.get_tagline(t, movie_id=UUID(int=1))\n"
+    )
+    result = generated.mypy(usage)
+    assert result.returncode == 1
+    assert "[return-value]" in result.stdout, result.stdout
+
+
+def test_run_sync_calls_the_client_without_an_event_loop(generated: Project) -> None:
+    run_sync = generated.client("__init__").run_sync
+    movies = generated.client("movies")
+    transport = RecordingTransport(response=MOVIE)
+
+    movie = run_sync(movies.get_movie(transport, movie_id=MOVIE_ID))
+
+    assert movie.id == MOVIE_ID
+    assert (transport.last.method, transport.last.path) == (
+        "GET",
+        f"/v1/movies/{MOVIE_ID}",
+    )
+    assert run_sync(movies.delete_movie(transport, movie_id=MOVIE_ID)) is None
+
+
+async def test_run_sync_works_inside_a_running_event_loop(generated: Project) -> None:
+    """Where asyncio.run fails, as when a loop is already running on the thread."""
+    run_sync = generated.client("__init__").run_sync
+    movies = generated.client("movies")
+    movie = run_sync(movies.get_movie(RecordingTransport(MOVIE), movie_id=MOVIE_ID))
+    assert movie.id == MOVIE_ID
+
+
+def test_run_sync_raises_what_the_transport_raises(generated: Project) -> None:
+    run_sync = generated.client("__init__").run_sync
+    movies = generated.client("movies")
+
+    class Failing(RecordingTransport):
+        async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+            raise LookupError("404")
+
+    with pytest.raises(LookupError, match="404"):
+        run_sync(movies.get_movie(Failing(), movie_id=MOVIE_ID))
+
+
+def test_run_sync_rejects_a_transport_that_suspends(generated: Project) -> None:
+    """The coroutine is closed, so no 'never awaited' warning (an error here)."""
+    run_sync = generated.client("__init__").run_sync
+    movies = generated.client("movies")
+
+    class Suspending(RecordingTransport):
+        async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+            await asyncio.sleep(0)
+            return MOVIE
+
+    with pytest.raises(RuntimeError, match="must block instead of awaiting"):
+        run_sync(movies.get_movie(Suspending(), movie_id=MOVIE_ID))
+
+
+def test_readme_sync_transport_works_with_run_sync(generated: Project) -> None:
+    """The README's sync example type checks and runs."""
+    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    section = readme.split("### Calling from synchronous code", 1)[1]
+    code = section.split("```python\n", 1)[1].split("```", 1)[0]
+    usage = generated.root / "readme_sync.py"
+    usage.write_text(
+        code.replace(
+            'httpx.Client(base_url="https://api.example.com")',
+            "httpx.Client(base_url=BASE_URL, transport=MOCK)",
+        ).replace(
+            "import httpx\n",
+            "import httpx\n\nBASE_URL: str\nMOCK: httpx.MockTransport\n",
+            1,
+        )
+    )
+    result = generated.mypy(usage)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=MOVIE)
+
+    namespace: dict[str, Any] = {
+        "BASE_URL": "https://movies.example",
+        "MOCK": httpx.MockTransport(handler),
+    }
+    exec(compile(usage.read_text(), str(usage), "exec"), namespace)
+    assert namespace["movie"].id == MOVIE_ID
+    assert str(seen[-1].url) == f"https://movies.example/v1/movies/{MOVIE_ID}"
+
+
+def test_run_sync_passes_mypy_strict(generated: Project) -> None:
+    usage = generated.root / "sync_usage.py"
+    usage.write_text(
+        textwrap.dedent(
+            """\
+            from uuid import UUID
+
+            from api import movies
+            from api.client import Transport, run_sync
+            from api.client import movies as movies_client
+
+
+            def use(t: Transport) -> None:
+                one: movies.Movie = run_sync(
+                    movies_client.get_movie(t, movie_id=UUID(int=1))
+                )
+                tagline: str | None = run_sync(
+                    movies_client.get_tagline(t, movie_id=one.id)
+                )
+                run_sync(movies_client.delete_movie(t, movie_id=one.id))
+            """
+        )
+    )
+    result = generated.mypy(usage)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_mypy_rejects_wrong_run_sync_return_use(generated: Project) -> None:
+    usage = generated.root / "wrong.py"
+    usage.write_text(
+        "from uuid import UUID\n"
+        "from api.client import Transport, run_sync\n"
+        "from api.client import movies as movies_client\n\n\n"
+        "def use(t: Transport) -> str:\n"
+        "    return run_sync(movies_client.get_tagline(t, movie_id=UUID(int=1)))\n"
     )
     result = generated.mypy(usage)
     assert result.returncode == 1

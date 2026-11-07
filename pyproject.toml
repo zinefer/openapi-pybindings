@@ -1,6 +1,6 @@
 [project]
 name = "openapi-pybindings"
-version = "0.1.0"
+version = "0.2.0"
 description = "Generate typed async Python client functions from OpenAPI specs, on top of datamodel-codegen models"
 readme = "README.md"
 license = "MIT"
