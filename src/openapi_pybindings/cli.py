@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = build_parser().parse_intermixed_args(argv)
     for directory in reversed(args.import_path or [Path.cwd()]):
         sys.path.insert(0, str(directory.resolve()))
     if not args.spec_dir.is_dir():
