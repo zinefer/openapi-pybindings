@@ -1,0 +1,41 @@
+openapi: 3.0.3
+info: {title: common, version: "1"}
+paths: {}
+x-path-items:
+  Ping:
+    get:
+      operationId: ping
+      parameters:
+        - {$ref: "#/components/parameters/Limit"}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Status"}
+components:
+  parameters:
+    MovieId:
+      name: movie_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    Limit:
+      name: limit
+      in: query
+      schema: {$ref: "#/components/schemas/Limit"}
+  schemas:
+    Limit:
+      type: integer
+      format: int32
+    Status:
+      type: string
+      enum: [released, upcoming]
+    Rating:
+      type: integer
+      enum: [1, 2, 3, 4, 5]
+    Error:
+      type: object
+      properties:
+        message: {type: string}
+      required: [message]

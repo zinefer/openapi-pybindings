@@ -1,0 +1,296 @@
+openapi: 3.0.3
+info: {title: movies, version: "1"}
+paths:
+  /v1/movies:
+    get:
+      operationId: listMovies
+      parameters:
+        - {name: title, in: query, required: true, schema: {type: string}}
+        - {name: status, in: query, schema: {$ref: "common.yaml#/components/schemas/Status"}}
+        - {name: rating, in: query, schema: {$ref: "common.yaml#/components/schemas/Rating"}}
+        - {$ref: "common.yaml#/components/parameters/Limit"}
+        - {name: since, in: query, schema: {type: string, format: date-time}}
+        - {name: on, in: query, schema: {type: string, format: date}}
+        - {name: director, in: query, schema: {type: string, format: uuid}}
+        - {name: subtitled, in: query, schema: {type: boolean}}
+        - {name: score, in: query, schema: {type: number, format: double}}
+        - {name: pageSize, in: query, schema: {type: integer, format: int64}}
+        - {name: class, in: query, schema: {type: string}}
+      responses:
+        200:
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Movie"}
+        default:
+          description: error
+          content:
+            application/json:
+              schema: {$ref: "common.yaml#/components/schemas/Error"}
+    post:
+      operationId: createMovie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MovieCreate"}
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Movie"}
+        "400":
+          description: bad
+          content:
+            application/json:
+              schema: {$ref: "common.yaml#/components/schemas/Error"}
+  /v1/movies/{movie_id}:
+    parameters:
+      - {$ref: "common.yaml#/components/parameters/MovieId"}
+    get:
+      operationId: getMovie
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json; charset=utf-8:
+              schema: {$ref: "#/components/schemas/Movie"}
+    put:
+      operationId: replaceMovie
+      requestBody:
+        $ref: "#/components/requestBodies/MovieBody"
+      responses:
+        "200": {$ref: "#/components/responses/MovieResponse"}
+    delete:
+      operationId: deleteMovie
+      responses:
+        "204": {description: deleted}
+  /v1/movies/{movie_id}/tags/{tag}:
+    parameters:
+      - {$ref: "common.yaml#/components/parameters/MovieId"}
+    get:
+      operationId: getTagCounts
+      parameters:
+        - {name: tag, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {type: integer}
+  /v1/screenings/{status}/{rating}/{imax}/{day}/{at}/{seats}:
+    get:
+      operationId: findScreenings
+      parameters:
+        - {name: status, in: path, required: true, schema: {$ref: "common.yaml#/components/schemas/Status"}}
+        - {name: rating, in: path, required: true, schema: {$ref: "common.yaml#/components/schemas/Rating"}}
+        - {name: imax, in: path, required: true, schema: {type: boolean}}
+        - {name: day, in: path, required: true, schema: {type: string, format: date}}
+        - {name: at, in: path, required: true, schema: {type: string, format: date-time}}
+        - {name: seats, in: path, required: true, schema: {type: integer}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: array, items: {type: string}}
+  /v1/movies/{movie_id}/poster:
+    parameters:
+      - {$ref: "common.yaml#/components/parameters/MovieId"}
+    get:
+      operationId: getPoster
+      responses:
+        "200":
+          description: the poster image
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+  /v1/movies/bulk:
+    post:
+      operationId: bulkCreateMovies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: {$ref: "#/components/schemas/MovieCreate"}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/vnd.movies+json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Movie"}
+  /v1/import:
+    post:
+      operationId: import
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {$ref: "#/components/schemas/MovieCreate"}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: integer}
+  /v1/movies/{movie_id}/status:
+    parameters:
+      - {$ref: "common.yaml#/components/parameters/MovieId"}
+    get:
+      operationId: getMovieStatus
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "common.yaml#/components/schemas/Status"}
+    put:
+      operationId: setMovieStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "common.yaml#/components/schemas/Status"}
+      responses:
+        "204": {description: updated}
+  /v1/movies/{movie_id}/sequel:
+    parameters:
+      - {$ref: "common.yaml#/components/parameters/MovieId"}
+    get:
+      operationId: getSequel
+      responses:
+        "200":
+          description: the sequel, or null if there is none
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Movie", nullable: true}
+  /v1/movies/{movie_id}/tagline:
+    parameters:
+      - {$ref: "common.yaml#/components/parameters/MovieId"}
+    get:
+      operationId: getTagline
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: string, nullable: true}
+  /v1/movies/search:
+    get:
+      operationId: searchMovies
+      parameters:
+        - {name: genres, in: query, schema: {type: array, items: {type: string}}}
+        - name: ids
+          in: query
+          explode: false
+          schema: {type: array, items: {type: string, format: uuid}}
+        - name: ratings
+          in: query
+          style: pipeDelimited
+          explode: false
+          schema: {type: array, items: {$ref: "common.yaml#/components/schemas/Rating"}}
+        - {name: filter, in: query, style: deepObject, schema: {$ref: "#/components/schemas/MovieFilter"}}
+        - {name: sort, in: query, schema: {type: string, enum: [title, -created]}}
+        - {name: X-Request-Id, in: header, schema: {type: string}}
+        - {name: Accept, in: header, schema: {type: string}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Movie"}}
+  /v1/movies/count:
+    get:
+      operationId: countMovies
+      parameters:
+        - {name: filter, in: query, required: true, schema: {$ref: "#/components/schemas/MovieFilter"}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: integer}
+  /v1/movies/by-ids/{movie_ids}:
+    get:
+      operationId: getMoviesByIds
+      parameters:
+        - name: movie_ids
+          in: path
+          required: true
+          schema: {type: array, items: {type: string, format: uuid}}
+        - name: X-Fields
+          in: header
+          required: true
+          schema: {type: array, items: {type: string}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Movie"}}
+  /v1/movies/{movie_id}/rating:
+    parameters:
+      - {$ref: "common.yaml#/components/parameters/MovieId"}
+    put:
+      operationId: rateMovie
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - {$ref: "common.yaml#/components/schemas/Rating"}
+                - {type: string, enum: [unrated]}
+      responses:
+        "200":
+          description: the movie, when its rating changed
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Movie"}
+        "204": {description: unchanged}
+  /v1/ping:
+    $ref: "common.yaml#/x-path-items/Ping"
+components:
+  requestBodies:
+    MovieBody:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Movie"}
+  responses:
+    MovieResponse:
+      description: ok
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Movie"}
+  schemas:
+    MovieFilter:
+      type: object
+      properties:
+        year: {type: integer}
+        rated: {$ref: "common.yaml#/components/schemas/Rating"}
+        min_score: {type: number}
+    MovieCreate:
+      type: object
+      properties:
+        title: {type: string}
+        status: {$ref: "common.yaml#/components/schemas/Status"}
+      required: [title, status]
+    Movie:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        status: {$ref: "common.yaml#/components/schemas/Status"}
+        created: {type: string, format: date-time}
+      required: [id, title, status, created]

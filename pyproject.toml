@@ -1,0 +1,67 @@
+[project]
+name = "openapi-pybindings"
+version = "0.1.0"
+description = "Generate typed async Python client functions from OpenAPI specs, on top of datamodel-codegen models"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["openapi", "codegen", "pydantic", "client", "datamodel-codegen"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
+]
+authors = [
+    { name = "zinefer", email = "zinefer@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml>=6.0.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "datamodel-code-generator>=0.90.0",
+    "httpx>=0.28.1",
+    "mypy>=2.4.1",
+    "pydantic>=2.14.3",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "ruff>=0.17.4",
+    "types-pyyaml>=6.0.12.20261103",
+]
+
+[project.scripts]
+openapi-pybindings = "openapi_pybindings.cli:main"
+
+[project.urls]
+Repository = "https://github.com/zinefer/openapi-pybindings"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error", "ignore::FutureWarning:datamodel_code_generator"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
+
+[tool.ruff]
+line-length = 88
+extend-exclude = ["tests/golden", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["openapi_pybindings", "conftest"]

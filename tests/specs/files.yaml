@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info: {title: files, version: "1"}
+paths:
+  /v2/files/{name}:
+    get:
+      operationId: downloadFile
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: the file
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+  /v2/health:
+    get:
+      operationId: health
+      responses:
+        "200": {description: ok}
