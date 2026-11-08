@@ -4,12 +4,12 @@ Generate typed Python client functions from OpenAPI specs, on top of the pydanti
 models [datamodel-codegen] already generates for the same specs.
 
 ```python
-from api.client import movies, run_sync
+from api.client import blocking, movies, run_sync
 
 movie = await movies.get_movie(transport, movie_id=movie_id)       # -> api.movies.Movie
 found = await movies.list_movies(transport, title="Alien", limit=10)  # -> list[api.movies.Movie]
 
-movie = run_sync(movies.get_movie(blocking_transport, movie_id=movie_id))  # from sync code
+movie = run_sync(movies.get_movie(blocking(send), movie_id=movie_id))  # from sync code
 ```
 
 - **One function per operation**, keyword-only, with the spec's own path, query
@@ -68,8 +68,9 @@ be called from Python: `openapi_pybindings.generate(...)` and
 `render(...)` take the same options as the command line.
 
 Exit status is 1 if any operation could not be generated, and 2 for a usage error
-such as a missing `SPEC_DIR`. The other operations are still written, and each problem is printed to stderr with the JSON pointer of the part
-of the spec at fault, and the operation that led there when that is elsewhere:
+such as a missing `SPEC_DIR`. The other operations are still written, and each
+problem is printed to stderr with the JSON pointer of the part of the spec at
+fault, and the operation that led there when that is elsewhere:
 
 ```
 error: movies.yaml#/paths/~1v1~1movies/get/parameters/3: cookie parameter session
@@ -84,6 +85,12 @@ are removed, except that a spec that cannot be read, or yields nothing but
 problems, keeps its last module. Any other file in the output directory is never
 touched, and a hand-written file in the way of a generated one is reported, not
 overwritten.
+
+The generated code is not laid out to any formatter's style, so exclude the output
+directory from formatting and line-length lints (in ruff, `extend-exclude =
+["api/client"]`); otherwise each run of the generator undoes the formatter's
+changes. To check in CI that the generated client is up to date, run the generator
+and then `git diff --exit-code api/client`.
 
 ## Calling the client
 
@@ -120,7 +127,7 @@ class Transport:
         return response.json() if response.content else None
 
 
-transport = HttpxTransport(httpx.AsyncClient(base_url="https://api.example.com"))
+transport = Transport(httpx.AsyncClient(base_url="https://api.example.com"))
 ```
 
 - `path` is as written in the spec, so `base_url` is the host plus any prefix not
@@ -196,8 +203,10 @@ request finishes. A transport that suspends makes `run_sync` raise
 ### Testing
 
 A transport is any object with that `__call__`, so tests can pass one that
-records `method`, `path`, `params`, `headers` and `json` and returns a canned response,
-instead of mocking HTTP. The response still goes through the same validation.
+records `method`, `path`, `params`, `headers` and `json` and returns a canned
+response, instead of mocking HTTP. A plain function wrapped with `blocking` works
+too, with no `async def` needed. The response still goes through the same
+validation.
 
 ## What gets generated
 
@@ -238,20 +247,24 @@ files, relative to the file they appear in.
   to a GET without a query, header or body, and never alongside JSON ones.
 - **Everything else:** remote `$ref`s; a missing `operationId`; names that would
   collide with each other or with what the generated code uses (an operation
-  named after a spec file, or `date`, `list`, ...); malformed specs.
+  named after a spec file, or `date`, `list`, ...; a spec file named after
+  something the client package defines, such as `blocking.yaml`); malformed
+  specs.
 
 ## Development
 
 ```sh
-uv sync
-uv run pytest          # end-to-end: real datamodel-codegen, mypy --strict, httpx
-uv run mypy
-uv run ruff check && uv run ruff format --check
+make        # everything CI runs: lint, mypy, and the tests
+make test   # just the tests: end-to-end with real datamodel-codegen,
+            # mypy --strict and httpx, plus the README's code blocks
+make format # apply ruff's fixes and formatting
+make golden # regenerate tests/golden/ after an intended output change
 ```
 
+The Makefile runs everything through `uv`, so `uv sync` is the only setup.
+
 - `tests/golden/` holds the exact output for `tests/specs/`. After an intended
-  change to the output, regenerate it with
-  `UPDATE_GOLDEN=1 uv run pytest tests/test_golden.py` and review the diff.
+  change to the output, regenerate it with `make golden` and review the diff.
 - The code blocks under "Writing a transport" and "Calling from synchronous code"
   are type checked and run by the tests, which find them by those headings.
 - Each generated function must await its transport exactly once and nothing else;

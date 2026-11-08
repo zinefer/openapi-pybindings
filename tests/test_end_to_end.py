@@ -521,8 +521,8 @@ def test_readme_transport_satisfies_the_protocol(generated: Project) -> None:
     usage = generated.root / "readme_transport.py"
     usage.write_text(
         code
-        + "\n\nfrom api.client import Transport  # noqa: E402\n\n"
-        + "checked: Transport = transport\n"
+        + "\n\nfrom api.client import Transport as Protocol  # noqa: E402\n\n"
+        + "checked: Protocol = transport\n"
     )
     result = generated.mypy(usage)
     assert result.returncode == 0, result.stdout + result.stderr
