@@ -61,11 +61,10 @@ one module per spec that has operations, e.g. `api/client/movies.py` for
 | `--exclude GLOB`       | Leave out spec files whose name matches, e.g. `--exclude 'public_*.yaml'` (repeatable). Their generated modules are removed.                                                           |
 | `--versions v1 v2`     | Require every path to start with `/v1/` or `/v2/`.                                                                                                                                     |
 | `--import-path DIR`    | Put `DIR` on `sys.path` to import the models package (default: the current directory).                                                                                                 |
-| `--check`              | Write nothing; exit 1 if the output is not what would be generated, or if any operation could not be generated. Use it in CI.                                                          |
 
 The generator imports the models package to confirm every referenced schema has a
 class, so run it from your project's environment (`uv run`) and root. It can also
-be called from Python: `openapi_pybindings.generate(...)`, `check(...)` and
+be called from Python: `openapi_pybindings.generate(...)` and
 `render(...)` take the same options as the command line.
 
 Exit status is 1 if any operation could not be generated, and 2 for a usage error
@@ -101,7 +100,7 @@ import httpx
 from api.client import JSON, QueryValue
 
 
-class HttpxTransport:
+class Transport:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
 

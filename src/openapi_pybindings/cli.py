@@ -7,13 +7,12 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from openapi_pybindings.generator import check, generate
+from openapi_pybindings.generator import generate
 
 DESCRIPTION = """\
 Generate typed async client functions from OpenAPI specs, using the pydantic
 models datamodel-codegen generated for the same specs (one module per spec file).
-Each problem is printed to stderr. Exits 1 if any operation could not be generated,
-or with --check if the output is not up to date.
+Each problem is printed to stderr. Exits 1 if any operation could not be generated.
 """
 
 
@@ -68,11 +67,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory to put on sys.path to import the models package "
         "(repeatable; default: the current directory)",
     )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="write nothing; fail if the output differs from what would be generated",
-    )
     return parser
 
 
@@ -83,8 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.spec_dir.is_dir():
         print(f"error: {args.spec_dir} is not a directory", file=sys.stderr)
         return 2
-    run = check if args.check else generate
-    problems = run(
+    problems = generate(
         args.spec_dir,
         args.output,
         models_package=args.models_package,

@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from openapi_pybindings import check, generate, render
+from openapi_pybindings import generate, render
 
 SPECS = Path(__file__).parent / "specs"
 GOLDEN = Path(__file__).parent / "golden"
@@ -64,14 +64,6 @@ class Project:
 
     def generate(self, **kwargs: Any) -> list[str]:
         return generate(
-            self.spec_dir,
-            self.client_dir,
-            models_package=self.models_package,
-            **kwargs,
-        )
-
-    def check(self, **kwargs: Any) -> list[str]:
-        return check(
             self.spec_dir,
             self.client_dir,
             models_package=self.models_package,
