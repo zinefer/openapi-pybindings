@@ -1,4 +1,4 @@
-"""The spec loader, operation walker and $ref resolver on their own."""
+"""The spec loader and $ref resolver on their own."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from openapi_pybindings.generator import Resolver, UnsupportedShape, _identifier
-from openapi_pybindings.specs import discover_specs, iter_operations, load_spec
+from openapi_pybindings.generator import Loc, Resolver, UnsupportedShape, _identifier
+from openapi_pybindings.specs import discover_specs, load_spec
 
 
 def test_yaml_is_read_as_yaml_1_2(tmp_path: Path) -> None:
@@ -68,33 +68,6 @@ def test_discover_specs(tmp_path: Path) -> None:
     assert [p.name for p in discover_specs(tmp_path)] == ["a.json", "b.yaml", "c.yml"]
 
 
-def test_iter_operations() -> None:
-    shared = [{"name": "id", "in": "path"}]
-    spec = {
-        "paths": {
-            "/a": {
-                "parameters": shared,
-                "post": {"operationId": "p"},
-                "summary": "not an operation",
-                "get": {"operationId": "g"},
-                "x-extension": {"operationId": "nope"},
-            },
-            "/b": {"delete": {"operationId": "d"}},
-            "/c": None,
-        }
-    }
-    ops = list(iter_operations(spec))
-    assert [(o.method, o.path, o.operation["operationId"]) for o in ops] == [
-        ("GET", "/a", "g"),
-        ("POST", "/a", "p"),
-        ("DELETE", "/b", "d"),
-    ]
-    assert ops[0].path_parameters == shared
-    assert ops[2].path_parameters == []
-    assert list(iter_operations({})) == []
-    assert list(iter_operations({"paths": None})) == []
-
-
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -107,11 +80,11 @@ def test_refs_resolve_relative_to_the_file_they_are_in(tmp_path: Path) -> None:
         tmp_path / "c.yaml", "end: {here: true, again: {$ref: '#/other'}}\nother: {}\n"
     )
     resolver = Resolver(tmp_path, "api")
-    node, current = resolver.resolve(resolver.spec("a.yaml")["start"], "a.yaml")
+    node, location = resolver.follow(resolver.spec("a.yaml")["start"], Loc("a.yaml"))
     assert node["here"] is True
-    assert current == "c.yaml"
+    assert location == Loc("c.yaml", "/end")
     # A later local ref in the target is relative to the target's file.
-    assert resolver.resolve(node["again"], current) == ({}, "c.yaml")
+    assert resolver.follow(node["again"], location) == ({}, Loc("c.yaml", "/other"))
 
 
 def test_json_pointer_escapes(tmp_path: Path) -> None:
@@ -126,12 +99,19 @@ def test_json_pointer_escapes(tmp_path: Path) -> None:
         "list: [{first: 1}, {second: 2}]\n",
     )
     resolver = Resolver(tmp_path, "api")
-    for ref, expected in [
-        ("#/paths/~1v1~1x~0y/get/responses/200", {"description": "found"}),
-        ("#/spaced%20key", {"ok": 1}),
-        ("#/list/1", {"second": 2}),
+    for ref, expected, pointer in [
+        (
+            "#/paths/~1v1~1x~0y/get/responses/200",
+            {"description": "found"},
+            "/paths/~1v1~1x~0y/get/responses/200",
+        ),
+        ("#/spaced%20key", {"ok": 1}, "/spaced key"),
+        ("#/list/1", {"second": 2}, "/list/1"),
     ]:
-        assert resolver.resolve({"$ref": ref}, "a.yaml") == (expected, "a.yaml")
+        assert resolver.follow({"$ref": ref}, Loc("a.yaml")) == (
+            expected,
+            Loc("a.yaml", pointer),
+        )
 
 
 @pytest.mark.parametrize(
@@ -149,7 +129,7 @@ def test_json_pointer_escapes(tmp_path: Path) -> None:
 def test_bad_refs(tmp_path: Path, ref: str, message: str) -> None:
     write(tmp_path / "a.yaml", "list: [1]\nscalar: 3\nself: {$ref: '#/self'}\n")
     with pytest.raises(UnsupportedShape, match=message.replace("$", r"\$")):
-        Resolver(tmp_path, "api").resolve({"$ref": ref}, "a.yaml")
+        Resolver(tmp_path, "api").follow({"$ref": ref}, Loc("a.yaml"))
 
 
 @pytest.mark.parametrize(
@@ -166,7 +146,7 @@ def test_bad_refs(tmp_path: Path, ref: str, message: str) -> None:
         ("page[size]", "page_size_"),
         ("filter.name", "filter_name"),
         ("2fa", "_2fa"),
-        # Kept from the original for output compatibility: acronyms are not split.
+        # Acronyms are not split.
         ("HTTPServer", "httpserver"),
     ],
 )

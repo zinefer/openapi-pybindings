@@ -188,7 +188,7 @@ async def test_custom_client_package_outside_the_models(project: Project) -> Non
         == []
     )
     assert (
-        "from movie_client import QueryValue, Transport"
+        "from movie_client import JSON, QueryValue, Transport"
         in (out / "movies.py").read_text()
     )
     import importlib
@@ -289,6 +289,6 @@ def test_unrelated_project_can_use_its_own_models_package_name(
     assert project.generate() == []
     text = (project.client_dir / "movies.py").read_text()
     assert "from models import common, movies" in text
-    assert "from models.client import QueryValue, Transport" in text
+    assert "from models.client import JSON, QueryValue, Transport" in text
     result = project.mypy()
     assert result.returncode == 0, result.stdout

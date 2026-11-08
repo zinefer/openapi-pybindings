@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 import textwrap
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta, timezone
@@ -356,14 +358,8 @@ async def test_unknown_formats_fall_back_to_their_type(
     files, problems = project.render()
     assert problems == []
     assert (
-        "async def loose(\n"
-        "    transport: Transport,\n"
-        "    *,\n"
-        "    n: int,\n"
-        "    ratio: float | None = None,\n"
-        "    email: str | None = None,\n"
-        "    maybe: str | None = None,\n"
-        ") -> float | None:"
+        "async def loose(transport: Transport, *, n: int, ratio: float | None = None, "
+        "email: str | None = None, maybe: str | None = None) -> float | None:"
     ) in files["loose.py"]
     project.generate()
     transport = RecordingTransport(response=None)
@@ -630,6 +626,36 @@ def test_mypy_rejects_wrong_calls(generated: Project, call: str, error: str) -> 
     assert f"[{error}]" in result.stdout, result.stdout
 
 
+def test_mypy_rejects_a_transport_that_does_not_return_json(
+    generated: Project,
+) -> None:
+    usage = generated.root / "wrong.py"
+    usage.write_text(
+        "from collections.abc import Mapping\n"
+        "from uuid import UUID\n"
+        "from api.client import JSON, QueryValue\n"
+        "from api.client import movies as movies_client\n\n\n"
+        "class Response:\n"
+        "    status_code = 200\n\n\n"
+        "class RawTransport:\n"
+        "    async def __call__(\n"
+        "        self,\n"
+        "        method: str,\n"
+        "        path: str,\n"
+        "        *,\n"
+        "        params: tuple[tuple[str, QueryValue], ...] | None,\n"
+        "        headers: Mapping[str, str] | None,\n"
+        "        json: JSON,\n"
+        "    ) -> Response:\n"
+        "        return Response()\n\n\n"
+        "async def use() -> None:\n"
+        "    await movies_client.get_movie(RawTransport(), movie_id=UUID(int=1))\n"
+    )
+    result = generated.mypy(usage)
+    assert result.returncode == 1
+    assert "[arg-type]" in result.stdout, result.stdout
+
+
 def test_mypy_rejects_wrong_return_use(generated: Project) -> None:
     usage = generated.root / "wrong.py"
     usage.write_text(
@@ -672,6 +698,62 @@ def test_run_sync_calls_the_client_without_an_event_loop(generated: Project) -> 
         f"/v1/movies/{MOVIE_ID}",
     )
     assert run_sync(movies.delete_movie(transport, movie_id=MOVIE_ID)) is None
+
+
+def test_blocking_wraps_a_plain_function_for_run_sync(generated: Project) -> None:
+    client = generated.client("__init__")
+    movies = generated.client("movies")
+    calls: list[tuple[str, str, Any]] = []
+
+    def send(method: str, path: str, *, params: Any, headers: Any, json: Any) -> Any:
+        calls.append((method, path, json))
+        return MOVIE
+
+    transport = client.blocking(send)
+    movie = client.run_sync(movies.get_movie(transport, movie_id=MOVIE_ID))
+    assert movie.id == MOVIE_ID
+    assert calls == [("GET", f"/v1/movies/{MOVIE_ID}", None)]
+
+
+def test_blocking_passes_mypy_strict(generated: Project) -> None:
+    usage = generated.root / "blocking_usage.py"
+    usage.write_text(
+        textwrap.dedent(
+            """\
+            from collections.abc import Mapping
+            from uuid import UUID
+
+            from api import movies
+            from api.client import JSON, QueryValue, blocking, run_sync
+            from api.client import movies as movies_client
+
+
+            def send(
+                method: str,
+                path: str,
+                *,
+                params: tuple[tuple[str, QueryValue], ...] | None,
+                headers: Mapping[str, str] | None,
+                json: JSON,
+            ) -> JSON:
+                return None
+
+
+            def bad(method: str, path: str) -> JSON:
+                return None
+
+
+            movie: movies.Movie = run_sync(
+                movies_client.get_movie(blocking(send), movie_id=UUID(int=1))
+            )
+            blocking(bad)  # E: wrong signature
+            """
+        )
+    )
+    result = generated.mypy(usage)
+    assert result.returncode == 1
+    errors = [line for line in result.stdout.splitlines() if ": error:" in line]
+    assert len(errors) == 1 and "blocking_usage.py:27:" in errors[0], result.stdout
 
 
 async def test_run_sync_works_inside_a_running_event_loop(generated: Project) -> None:
@@ -726,6 +808,19 @@ def test_readme_sync_transport_works_with_run_sync(generated: Project) -> None:
     )
     result = generated.mypy(usage)
     assert result.returncode == 0, result.stdout + result.stderr
+    ruff = subprocess.run(
+        [
+            str(Path(sys.executable).parent / "ruff"),
+            "check",
+            "--isolated",
+            "--select",
+            "ASYNC",
+            str(usage),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert ruff.returncode == 0, ruff.stdout + ruff.stderr
 
     seen: list[httpx.Request] = []
 

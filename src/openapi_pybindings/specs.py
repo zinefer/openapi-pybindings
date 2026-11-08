@@ -1,11 +1,9 @@
-"""Loading OpenAPI documents and walking their operations."""
+"""Loading OpenAPI documents."""
 
 from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -38,17 +36,6 @@ _Loader.add_implicit_resolver(
 )
 
 
-@dataclass(frozen=True)
-class Operation:
-    path: str
-    method: str
-    """Upper case, as sent on the wire."""
-    operation: dict[str, Any]
-    path_parameters: Any
-    """Parameters declared on the path item, shared by all of its operations, as
-    written (a list, unless the spec is malformed)."""
-
-
 def load_spec(path: Path) -> dict[str, Any]:
     """Parse a JSON (`.json`) or YAML OpenAPI document. Raises ValueError if it
     cannot be parsed or is not a mapping."""
@@ -70,21 +57,3 @@ def discover_specs(spec_dir: Path) -> list[Path]:
     return sorted(
         p for p in spec_dir.iterdir() if p.is_file() and p.suffix in SPEC_SUFFIXES
     )
-
-
-def iter_operations(spec: dict[str, Any]) -> Iterator[Operation]:
-    """Every operation in the document, in path then method order as written."""
-    paths = spec.get("paths")
-    if not isinstance(paths, dict):
-        return
-    for path, item in paths.items():
-        if not isinstance(item, dict):
-            continue
-        for method in HTTP_METHODS:
-            if method in item:
-                yield Operation(
-                    path=str(path),
-                    method=method.upper(),
-                    operation=item[method],
-                    path_parameters=item.get("parameters") or [],
-                )
